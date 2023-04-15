@@ -14,6 +14,66 @@ PRBS_POLYNOMIALS = {
     "L511": {"polynomial": 0b1000100001, "length": 511}
 }
 
+def read_write_serial(ser,amplitude=10,delay=100):
+    start_time = time.time()
+
+    header = b''
+    data = b''
+    state = 0
+
+    print("Start receiving and sending data")
+
+    with open('output.txt','w') as f:
+        f.write("mcu_time;theta;u;cmd\n")
+
+        prbs = (np.array(generate_prbs("L31")) - 0.5) * amplitude * 2
+        end_time = 0
+
+        end_time = time.perf_counter()*1000 + delay*31
+        step_time = 0
+        amplitude = 0
+
+        while time.perf_counter()*1000 < end_time:
+
+            # Non-blocking delay
+            if time.perf_counter()*1000-step_time > delay:
+                amplitude = prbs[0]
+                prbs = np.delete(prbs,0)
+                step_time = time.perf_counter()*1000
+                send_data_1(ser, 1, 0, int(amplitude))
+
+            byte = ser.read(1)
+            if byte:
+                if state == 0:
+                    header += byte
+                    if header == b'\x5A':
+                        state = 1
+                    else:
+                        header = b''
+                elif state == 1:
+                    header += byte
+                    if header == b'\x5A\xA5':
+                        state = 2
+                    else:
+                        state = 0
+                        header = b''
+                elif state == 2:
+                    data += byte
+                    if len(data) == 8:
+                        mcu_time, theta, u = struct.unpack('>HIh', data)  
+                        f.write(f"{mcu_time};{theta};{u};{int(amplitude)}\n")
+                        data = b''
+                        state = 0
+                else:
+                    state = 0
+                    header = b''
+                    data = b''
+
+        # Send a final value of 0 to signal the end of the PRBS sequence
+        send_data_1(ser, 1, 0, 0)
+
+    print("Finished receiving and sending data")
+
 def prbs_test(ser,amplitude,delay):
     ser = ser
     def read_serial():
@@ -23,7 +83,7 @@ def prbs_test(ser,amplitude,delay):
         state = 0
         print("Start receiving data")
         with open('output.txt','w') as f:
-            f.write("mcu_time;theta\n")
+            f.write("mcu_time;theta;cmd\n")
             while time.time() - start_time < 10:
                 byte = ser.read(1)
                 if byte:
@@ -44,7 +104,7 @@ def prbs_test(ser,amplitude,delay):
                         data += byte
                         if len(data) == 6:
                             mcu_time, theta = struct.unpack('>HI', data)  
-                            f.write(f"{mcu_time};{theta}\n")
+                            f.write(f"{mcu_time};{theta};{cmd}\n")
                             data = b''
                             state = 0
                     else:
