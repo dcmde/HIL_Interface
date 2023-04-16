@@ -21,6 +21,7 @@ def read_write_serial(ser,amplitude=10,delay=100):
     data = b''
     state = 0
 
+    ser.flush()
     print("Start receiving and sending data")
 
     with open('output.txt','w') as f:
