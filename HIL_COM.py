@@ -61,7 +61,7 @@ def read_write_serial(ser,amplitude=10,delay=100):
                 elif state == 2:
                     data += byte
                     if len(data) == 8:
-                        mcu_time, theta, u = struct.unpack('>HIh', data)  
+                        mcu_time, theta, u = struct.unpack('>Hih', data)
                         f.write(f"{mcu_time};{theta};{u};{int(amplitude)}\n")
                         data = b''
                         state = 0
