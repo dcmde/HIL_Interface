@@ -14,7 +14,17 @@ PRBS_POLYNOMIALS = {
     "L511": {"polynomial": 0b1000100001, "length": 511}
 }
 
-def read_write_serial(ser,amplitude=10,delay=100):
+def prbs_one_shot(ser,amplitude,delay):
+    with open('output.txt','w') as f:
+        identification_sequence(ser,f,amplitude,delay)
+
+def prbs_sequence(ser,amplitude,delay):
+    with open('output.txt','w') as f:
+        f.write("mcu_time;theta;u;cmd;current1;current2;current3\n")
+        for amp in amplitude:
+            identification_sequence(ser,f,amp,delay)
+
+def identification_sequence(ser,file,amplitude=10,delay=100):
     start_time = time.time()
 
     header = b''
@@ -24,54 +34,51 @@ def read_write_serial(ser,amplitude=10,delay=100):
     ser.flush()
     print("Start receiving and sending data")
 
-    with open('output.txt','w') as f:
-        f.write("mcu_time;theta;u;cmd\n")
+    prbs = (np.array(generate_prbs("L31")) - 0.5) * amplitude * 2
+    end_time = 0
 
-        prbs = (np.array(generate_prbs("L31")) - 0.5) * amplitude * 2
-        end_time = 0
+    end_time = time.perf_counter()*1000 + delay*31
+    step_time = 0
+    amplitude = 0
 
-        end_time = time.perf_counter()*1000 + delay*31
-        step_time = 0
-        amplitude = 0
+    while time.perf_counter()*1000 < end_time:
 
-        while time.perf_counter()*1000 < end_time:
+        # Non-blocking delay
+        if time.perf_counter()*1000-step_time > delay:
+            amplitude = prbs[0]
+            prbs = np.delete(prbs,0)
+            step_time = time.perf_counter()*1000
+            send_data_1(ser, 1, 0, int(amplitude))
 
-            # Non-blocking delay
-            if time.perf_counter()*1000-step_time > delay:
-                amplitude = prbs[0]
-                prbs = np.delete(prbs,0)
-                step_time = time.perf_counter()*1000
-                send_data_1(ser, 1, 0, int(amplitude))
-
-            byte = ser.read(1)
-            if byte:
-                if state == 0:
-                    header += byte
-                    if header == b'\x5A':
-                        state = 1
-                    else:
-                        header = b''
-                elif state == 1:
-                    header += byte
-                    if header == b'\x5A\xA5':
-                        state = 2
-                    else:
-                        state = 0
-                        header = b''
-                elif state == 2:
-                    data += byte
-                    if len(data) == 8:
-                        mcu_time, theta, u = struct.unpack('>Hih', data)
-                        f.write(f"{mcu_time};{theta};{u};{int(amplitude)}\n")
-                        data = b''
-                        state = 0
+        byte = ser.read(1)
+        if byte:
+            if state == 0:
+                header += byte
+                if header == b'\x5A':
+                    state = 1
+                else:
+                    header = b''
+            elif state == 1:
+                header += byte
+                if header == b'\x5A\xA5':
+                    state = 2
                 else:
                     state = 0
                     header = b''
+            elif state == 2:
+                data += byte
+                if len(data) == 14:
+                    mcu_time, theta, u, cur1, cur2, cur3 = struct.unpack('>Hihhhh', data)
+                    file.write(f"{mcu_time};{theta};{u};{int(amplitude)};{int(cur1)};{int(cur2)};{int(cur3)}\n")
                     data = b''
+                    state = 0
+            else:
+                state = 0
+                header = b''
+                data = b''
 
-        # Send a final value of 0 to signal the end of the PRBS sequence
-        send_data_1(ser, 1, 0, 0)
+    # Send a final value of 0 to signal the end of the PRBS sequence
+    send_data_1(ser, 1, 0, 0)
 
     print("Finished receiving and sending data")
 
@@ -171,7 +178,7 @@ def generate_prbs(length_str):
 
 def send_data(STATE, FREQ, AMP):
     # pack the data into a byte string
-    data = struct.pack('Bbhb', 0xAB, STATE, FREQ, AMP)
+    data = struct.pack('Bbhbb', 0xAB, STATE, FREQ, AMP, 0)
     # open the serial port
     ser = serial.Serial('/dev/ttyUSB2', 230400)
     # send the data
@@ -181,6 +188,27 @@ def send_data(STATE, FREQ, AMP):
 
 def send_data_1(ser, STATE, FREQ, AMP):
     # pack the data into a byte string
-    data = struct.pack('Bbhb', 0xAB, STATE, FREQ, AMP)
+    data = struct.pack('Bbhbb', 0xAB, STATE, FREQ, AMP, 0)
     # send the data
     ser.write(data)
+
+def set_pid_val(ser,STATE,val):
+    data1 = struct.pack('Bb', 0xAB, STATE)
+    data2 = struct.pack('f', val)
+    print(data1, data2, data1+data2)
+    print(ser.write(data1+data2))
+
+def set_pid_p(ser,val):
+    set_pid_val(ser,7,val);
+
+def set_pid_i(ser,val):
+    set_pid_val(ser,8,val);
+
+def set_pid_d(ser,val):
+    set_pid_val(ser,9,val);
+
+def set_pid(ser,val):
+    set_pid_val(ser,6,val);
+
+def reset(ser):
+    send_data_1(ser, 0x05, 0, 0)
