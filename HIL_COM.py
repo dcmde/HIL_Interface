@@ -195,8 +195,7 @@ def send_data_1(ser, STATE, FREQ, AMP):
 def set_pid_val(ser,STATE,val):
     data1 = struct.pack('Bb', 0xAB, STATE)
     data2 = struct.pack('f', val)
-    print(data1, data2, data1+data2)
-    print(ser.write(data1+data2))
+    ser.write(data1+data2)
 
 def set_pid_p(ser,val):
     set_pid_val(ser,7,val);
@@ -207,8 +206,68 @@ def set_pid_i(ser,val):
 def set_pid_d(ser,val):
     set_pid_val(ser,9,val);
 
+def set_pid_ff(ser,val):
+    set_pid_val(ser,0x0A,val);
+
 def set_pid(ser,val):
     set_pid_val(ser,6,val);
 
 def reset(ser):
     send_data_1(ser, 0x05, 0, 0)
+
+def pid_interface(ser,file,ref_speed,pid_p,pid_ff):
+    start_time = time.time()
+
+    header = b''
+    data = b''
+    state = 0
+
+    ser.flush()
+    print("Start receiving and sending data")
+
+    step_time = 0
+    amplitude = 0
+
+    set_pid_p(ser,pid_p)
+    set_pid_ff(ser,pid_ff)
+    set_pid(ser,ref_speed)
+
+    end_time = time.perf_counter()*1000 + 1000
+
+    ser.flush()
+
+    while time.perf_counter()*1000 < end_time:
+        byte = ser.read(1)
+        if byte:
+            if state == 0:
+                header += byte
+                if header == b'\x5A':
+                    state = 1
+                else:
+                    header = b''
+            elif state == 1:
+                header += byte
+                if header == b'\x5A\xA5':
+                    state = 2
+                else:
+                    state = 0
+                    header = b''
+            elif state == 2:
+                data += byte
+                if len(data) == 4:
+                    omega, u = struct.unpack('hh', data)
+                    file.write(f"{omega};{u}\n")
+                    data = b''
+                    state = 0
+            else:
+                state = 0
+                header = b''
+                data = b''
+
+    print("Finished receiving and sending data")
+
+
+def pid_sequence(ser,ref_speed,pid_p,pid_ff):
+    with open('output_pid.txt','w') as file:
+        file.write("omega;theta;u\n")
+        pid_interface(ser,file,ref_speed,pid_p,pid_ff)
