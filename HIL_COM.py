@@ -1,10 +1,9 @@
 # HIL_COM.py
 
-import threading
-import struct
 import serial
 import time
 import numpy as np
+from message_decoder import *
 
 PRBS_POLYNOMIALS = {
     "L15": {"polynomial": 0b11001, "length": 15},
@@ -257,6 +256,7 @@ def pid_interface(ser,file,ref_speed,pid_p,pid_ff):
                 if len(data) == 4:
                     omega, u = struct.unpack('hh', data)
                     file.write(f"{omega};{u}\n")
+                    header = b''
                     data = b''
                     state = 0
             else:
