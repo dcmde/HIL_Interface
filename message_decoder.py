@@ -10,8 +10,8 @@ class Header(Enum):
     PID = b'\x12'
 
 class DecodeFormatType(Enum):
-    PRESSURE = '>hii'
-    PID = '>3h'
+    PRESSURE = '>Hii'
+    PID = '>H2h'
     IDLE = '>HI'
 
 class DecodeFormatLength(Enum):
@@ -99,3 +99,5 @@ if __name__ == '__main__':
                 print("IDLE")
                 print(msg_data)
         byte = ser_itf.read(1)
+
+
