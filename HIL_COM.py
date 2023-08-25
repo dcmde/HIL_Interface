@@ -82,7 +82,6 @@ def identification_sequence(ser,file,amplitude=10,delay=100):
     print("Finished receiving and sending data")
 
 def prbs_test(ser,amplitude,delay):
-    ser = ser
     def read_serial():
         start_time = time.time()
         header = b''

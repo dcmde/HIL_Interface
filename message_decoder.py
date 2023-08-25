@@ -4,16 +4,20 @@ from enum import Enum
 
 class Header(Enum):
     START = b'\x5A'
+    IDLE = b'\x01'
+    OPEN = b'\x02'
     PRESSURE = b'\x11'
     PID = b'\x12'
 
 class DecodeFormatType(Enum):
-    PRESSURE = '>ii'
-    PID = 'hh'
+    PRESSURE = '>hii'
+    PID = '>3h'
+    IDLE = '>HI'
 
 class DecodeFormatLength(Enum):
-    PRESSURE = 8
-    PID = 4
+    PRESSURE = 10
+    PID = 6
+    IDLE = 6
 
 class message_decoder:
 
@@ -28,19 +32,15 @@ class message_decoder:
         if self.state == None:
             if byte == Header.START.value:
                 self.state = Header.START
-
         elif self.state == Header.START:
             if byte == Header.PRESSURE.value:
                 self.state = Header.PRESSURE
-            else:
-                self.state = None
-
-        elif self.state == Header.START:
-            if byte == Header.PID.value:
+            elif byte == Header.PID.value:
                 self.state = Header.PID
+            elif byte == Header.IDLE.value:
+                self.state = Header.IDLE
             else:
                 self.state = None
-
         elif self.state == Header.PRESSURE:
             self.data += byte
             if len(self.data) == DecodeFormatLength.PRESSURE.value:
@@ -49,11 +49,19 @@ class message_decoder:
                 self.last_state = self.state
                 self.state = None
                 return True
-
         elif self.state == Header.PID:
             self.data += byte
             if len(self.data) == DecodeFormatLength.PID.value:
                 self.message = struct.unpack(DecodeFormatType.PID.value, self.data)
+                self.data = b''
+                self.last_state = self.state
+                self.state = None
+                return True
+        elif self.state == Header.IDLE:
+            self.data += byte
+            if len(self.data) == DecodeFormatLength.IDLE.value:
+                print(self.data)
+                self.message = struct.unpack(DecodeFormatType.IDLE.value, self.data)
                 self.data = b''
                 self.last_state = self.state
                 self.state = None
@@ -72,12 +80,22 @@ if __name__ == '__main__':
     import serial
 
     ser_itf = serial.Serial(port='/dev/ttyUSB0',baudrate=460800,timeout=1)
-    header = b''
-    byte = b''
-    while(1):
-        header = ser_itf.read(1)
-        if header == b'\x5A':
-            header = ser_itf.read(1)
-            if header == b'\x11':
-                print(ser_itf.read(9))
-            header = b''
+    
+    decoder = message_decoder()
+
+    ser_itf.flush()
+    byte = ser_itf.read(1)
+
+    while(byte):
+        if(decoder.decode(byte)):
+            msg_type, msg_data = decoder.get_message()
+            if msg_type == Header.PRESSURE:
+                print("Pressure")
+                print(msg_data)
+            elif msg_type == Header.PID:
+                print("PID")
+                print(msg_data)
+            elif msg_type == Header.IDLE:
+                print("IDLE")
+                print(msg_data)
+        byte = ser_itf.read(1)
