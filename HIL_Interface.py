@@ -1,4 +1,4 @@
-import sys
+import sys, time
 import numpy as np
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QLineEdit, QComboBox, QVBoxLayout, QHBoxLayout, QWidget, QSizePolicy
 from PyQt5.QtCore import Qt, QTimer
@@ -15,16 +15,16 @@ class MainWindow(QMainWindow):
     def __init__(self,ser_itf):
         super().__init__()
         self.setWindowTitle('Data Display')
-        self.setGeometry(100, 100, 800, 400)
+        self.setGeometry(100, 100, 4000, 3500)
         self.window_size = 10
 
         self.figure1 = plt.figure()
         self.canvas1 = FigureCanvas(self.figure1)
-        self.ax1 = self.figure1.add_subplot(211)
-        self.ax2 = self.figure1.add_subplot(212)
 
-        self.ax1.set_title("Pressure")
-        self.ax2.set_title("Temperature")
+        self.ax1 = self.figure1.add_subplot(221)
+        self.ax2 = self.figure1.add_subplot(222)
+        self.ax3 = self.figure1.add_subplot(223)
+        self.ax4 = self.figure1.add_subplot(224)
 
         self.p_label = QLabel('P:', self)
         self.i_label = QLabel('I:', self)
@@ -98,6 +98,9 @@ class MainWindow(QMainWindow):
 
         self.pres_data_array = np.zeros(self.time_plot_len)
         self.temp_data_array = np.zeros(self.time_plot_len)
+        self.pid_speed_data_array = np.zeros(self.time_plot_len)
+        self.pid_voltage_data_array = np.zeros(self.time_plot_len)
+        self.idle_ang_data_array = np.zeros(self.time_plot_len)
         self.time_array = np.arange(self.time_plot_len)-self.time_plot_len
 
         self.decoder = message_decoder()
@@ -140,48 +143,69 @@ class MainWindow(QMainWindow):
 
         data1 = 0
 
+        self.ax1.cla()
+        self.ax2.cla()
+        self.ax3.cla()
+        self.ax4.cla()
+
+        self.ser_itf.flushInput()
+        time.sleep(.01)
         byte = self.ser_itf.read(1)
-        while(byte):
+        cpt = 1
+        while(byte and cpt):
             
             if(self.decoder.decode(byte)):
+                cpt = cpt - 1 
                 
                 msg_type, msg_data = self.decoder.get_message()
 
                 if msg_type == Header.PRESSURE:
-                    if msg_data[1] and msg_data[0]:
-                        if abs(msg_data[1]-self.pres_data_array[-1])<1000 or self.time_array[-1] < 5:
-                            self.pres_data_array = np.append(self.pres_data_array, msg_data[1])
-                            self.pres_data_array = self.pres_data_array[1:]
-                            self.temp_data_array = np.append(self.temp_data_array, msg_data[0]/100)
-                            self.temp_data_array = self.temp_data_array[1:]
-                            self.time_array += 1
+
+                    self.pres_data_array = np.append(self.pres_data_array, msg_data[2])
+                    self.pres_data_array = self.pres_data_array[1:]
+                    self.temp_data_array = np.append(self.temp_data_array, msg_data[1]/100)
+                    self.temp_data_array = self.temp_data_array[1:]
+
+                    self.ax1.set_title("Pressure")
+                    self.ax2.set_title("Temperature")
+                    self.ax1.set_ylabel('Pressure [Pa]')
+                    self.ax2.set_ylabel('Temperature [C]')
+
+                    self.ax1.plot(self.time_array, self.pres_data_array, 'bo-')
+                    self.ax2.plot(self.time_array, self.temp_data_array, 'ro-')
+
                 elif msg_type == Header.PID:
-                    #self.pres_data_array = np.append(self.pres_data_array, msg_data[0])
-                    #self.pres_data_array = self.pres_data_array[1:]
-                    #self.time_array += 1
-                    a = 1
+
+                    self.pid_speed_data_array = np.append(self.pid_speed_data_array, msg_data[1])
+                    self.pid_speed_data_array = self.pid_speed_data_array[1:]
+                    self.pid_voltage_data_array = np.append(self.pid_voltage_data_array, msg_data[2])
+                    self.pid_voltage_data_array = self.pid_voltage_data_array[1:]
+
+                    self.ax3.plot(self.time_array, self.pid_voltage_data_array, 'bo-')
+                    self.ax4.plot(self.time_array, self.pid_speed_data_array, 'ro-')
+
+                    self.ax3.set_title("PID : Voltage command")
+                    self.ax4.set_title("PID : Speed")
+                    self.ax3.set_ylabel('[V]')
+                    self.ax4.set_ylabel('[?]]')
+
+                elif msg_type == Header.IDLE:
+                    self.idle_ang_data_array = np.append(self.idle_ang_data_array, msg_data[1])
+                    self.idle_ang_data_array = self.idle_ang_data_array[1:]
+
+                    self.ax3.plot(self.time_array, self.idle_ang_data_array)
+
+                    self.ax3.set_title("IDLE : Angular pos")
+                    self.ax3.set_ylabel('[?]')
+
+                elif msg_type == Header.OPEN:
+                    pass
             
             byte = self.ser_itf.read(1)
 
-        # Generate data
-        #data1 = np.sin(2 * np.pi * 1000 * self.data_index / 44100)  # Assuming 44.1 kHz sample rate
-        #data2 = np.sin(2 * np.pi * 100 * self.data_index / 44100)  # Assuming 44.1 kHz sample rate
-        #self.data_index += 1
-
-        #Clear all display
-        self.ax1.cla()
-        self.ax2.cla()
-        # Plot data on graph
-        self.ax1.plot(self.time_array, self.pres_data_array, 'bo-')  # Plot data point on the graph
-        self.ax1.set_ylabel('Pressure [Pa]')
-        self.ax2.plot(self.time_array, self.temp_data_array, 'ro-')  # Plot data point on the graph
-        self.ax2.set_ylabel('Temperature [C]')
         plt.tight_layout()
-        # Adjust x-axis limits to create sliding window effect
-        #if self.data_index > self.window_size:
-        #    self.ax2.set_xlim(self.data_index - self.window_size, self.data_index)
-
         self.canvas1.draw()
+
 
 
 def run(ser_itf):
@@ -190,8 +214,10 @@ def run(ser_itf):
     window.show()
     sys.exit(app.exec_())
 
+
+#if __name__ == '__main__':
 import serial
 
 ser = serial.Serial(port='/dev/ttyUSB0',baudrate=460800,timeout=0)
-
+ser.flush()
 run(ser)
