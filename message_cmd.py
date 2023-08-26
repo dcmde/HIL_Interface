@@ -75,20 +75,48 @@ class message_cmd:
         self.send_param(CmdId.JUNK.value,cmd_id,CmdFormatType.JUNK.value)
 
 
+def test_decode(ser_itf,decoder):
+    byte = ser_itf.read(1)
+    a = datetime.datetime.now()
+    b = datetime.datetime.now()
+    c = b - a
+    while(c.seconds < 4):
+        b = datetime.datetime.now()
+        c = b - a
+        if(decoder.decode(byte)):
+            msg_type, msg_data = decoder.get_message()
+            if msg_type == Header.PRESSURE:
+                print("Pressure")
+                print(msg_data)
+            elif msg_type == Header.PID:
+                print("PID")
+                print(msg_data)
+            elif msg_type == Header.IDLE:
+                print("IDLE")
+                print(msg_data)
+        byte = ser_itf.read(1)
+
+
 if __name__ == '__main__':
 
-    import serial, time
+    import serial, time, datetime
+    from message_decoder import * 
 
     ser_itf = serial.Serial(port='/dev/ttyUSB0',baudrate=460800,timeout=1)
 
     cmd = message_cmd(ser_itf)
 
-    time.sleep(2)
+    decoder = message_decoder()
+
+    ser_itf.flush()
+
+    cmd.idle()
+    test_decode(ser_itf,decoder)
 
     cmd.offset_tune()
-    
-    time.sleep(2)
+    test_decode(ser_itf,decoder)
 
     cmd.pid_setpoint(0.0)
+    test_decode(ser_itf,decoder)
 
     ser_itf.close()
