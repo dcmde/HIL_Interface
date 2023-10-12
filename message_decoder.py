@@ -13,6 +13,7 @@ class DecodeFormatType(Enum):
     PRESSURE = '>Hii'
     PID = '>H2h'
     IDLE = '>Hi'
+    OPEN = '>Hih'
 
 # IDLE      : TIME(H) ANG_POS(i)
 # PID       : TIME(H) SPEED(h)       VOLTAGE_CMD(h)
@@ -22,6 +23,7 @@ class DecodeFormatLength(Enum):
     PRESSURE = 10
     PID = 6
     IDLE = 6
+    OPEN = 8
 
 class message_decoder:
 
@@ -43,6 +45,8 @@ class message_decoder:
                 self.state = Header.PID
             elif byte == Header.IDLE.value:
                 self.state = Header.IDLE
+            elif byte == Header.OPEN.value:
+                self.state = Header.OPEN
             else:
                 self.state = None
         elif self.state == Header.PRESSURE:
@@ -65,6 +69,14 @@ class message_decoder:
             self.data += byte
             if len(self.data) == DecodeFormatLength.IDLE.value:
                 self.message = struct.unpack(DecodeFormatType.IDLE.value, self.data)
+                self.data = b''
+                self.last_state = self.state
+                self.state = None
+                return True
+        elif self.state == Header.OPEN:
+            self.data += byte
+            if len(self.data) == DecodeFormatLength.OPEN.value:
+                self.message = struct.unpack(DecodeFormatType.OPEN.value, self.data)
                 self.data = b''
                 self.last_state = self.state
                 self.state = None

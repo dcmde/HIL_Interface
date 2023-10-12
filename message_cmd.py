@@ -51,6 +51,9 @@ class message_cmd:
     def offset_tune(self):
         self.send_no_param(CmdId.OFFSET_TUNE.value)
 
+    def open_loop(self,p_value):
+        self.send_param(p_value, CmdId.OPEN_LOOP.value, CmdFormatType.OPEN_LOOP.value)
+
     def pid_setpoint(self,setpoint):
         self.send_param(setpoint, CmdId.PID_SET_PTS.value, CmdFormatType.PID_SET_PTS.value)
 
@@ -69,6 +72,8 @@ class message_cmd:
     def send_param(self,param,cmd_id,format_type):
         data1 = struct.pack(CmdFormatType.HEADER_STATE.value, CmdId.HEADER.value, cmd_id)
         data2 = struct.pack(format_type, param)
+        while (len(data1) + len(data2) != 6):
+            data2 = data2 + struct.pack('>b',0)
         self.ser_itf.write(data1+data2)
 
     def send_no_param(self,cmd_id):
@@ -80,19 +85,21 @@ def test_decode(ser_itf,decoder):
     a = datetime.datetime.now()
     b = datetime.datetime.now()
     c = b - a
-    while(c.seconds < 4):
+    while(c.seconds < 2):
         b = datetime.datetime.now()
         c = b - a
         if(decoder.decode(byte)):
             msg_type, msg_data = decoder.get_message()
             if msg_type == Header.PRESSURE:
-                print("Pressure")
-                print(msg_data)
+                print(f"Pressure {msg_data[1]} {msg_data[2]/100}")
             elif msg_type == Header.PID:
                 print("PID")
                 print(msg_data)
             elif msg_type == Header.IDLE:
                 print("IDLE")
+                print(msg_data)
+            elif msg_type == Header.OPEN:
+                print("OPEN_LOOP")
                 print(msg_data)
         byte = ser_itf.read(1)
 
@@ -110,13 +117,16 @@ if __name__ == '__main__':
 
     ser_itf.flush()
 
-    cmd.idle()
-    test_decode(ser_itf,decoder)
+    #cmd.idle()
+    #test_decode(ser_itf,decoder)
 
-    cmd.offset_tune()
-    test_decode(ser_itf,decoder)
+    #cmd.offset_tune()
+    #test_decode(ser_itf,decoder)
+    cmd.open_loop(4)
+    
+    time.sleep(1)
 
-    cmd.pid_setpoint(0.0)
+    cmd.open_loop(7)
     test_decode(ser_itf,decoder)
 
     ser_itf.close()
